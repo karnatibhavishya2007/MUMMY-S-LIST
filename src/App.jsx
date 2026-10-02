@@ -11,6 +11,7 @@ import {
   Edit3,
   History,
   Home,
+  Link2,
   Minus,
   Plus,
   Search,
@@ -1036,6 +1037,7 @@ export default function App() {
     useState(null);
 
   const [toast, setToast] = useState("");
+  const [finishNotice, setFinishNotice] = useState(null);
 
   const [
     selectedListCategories,
@@ -1477,19 +1479,11 @@ export default function App() {
         updatedAt: Date.now(),
       }));
 
-    const sharedItemIds = new Set(
-      filteredItems.map((item) => item.id)
-    );
-
     setState((prev) => ({
       ...prev,
 
-      // Remove only the items that were moved
-      // into the active shopping list.
-      cart: prev.cart.filter(
-        (item) => !sharedItemIds.has(item.id)
-      ),
-
+      // Keep the Cart unchanged.
+      // Final List is a snapshot of the selected items.
       sharedList: {
         id: makeId("list"),
         createdAt: Date.now(),
@@ -1601,18 +1595,16 @@ export default function App() {
       cart: unavailableItems,
     }));
 
-    setScreen("history");
-
     if (unavailableItems.length > 0) {
-      notify(
-        `${unavailableItems.length} unavailable item${
-          unavailableItems.length === 1
-            ? ""
-            : "s"
-        } added back to cart`
-      );
+      setFinishNotice({
+        type: "remaining",
+        items: unavailableItems,
+      });
     } else {
-      notify("List completed");
+      setFinishNotice({
+        type: "complete",
+        items: [],
+      });
     }
   }
 
@@ -1677,6 +1669,88 @@ export default function App() {
 
     setScreen("shared");
     notify("Previous list restored");
+  }
+
+  async function shareFinalListAsText() {
+    if (!state.sharedList?.items?.length) {
+      notify("Your final list is empty");
+      return;
+    }
+
+    const categoryOrder = [
+      "Vegetables",
+      "Fruits",
+      "Eats",
+      "Home Essentials",
+    ];
+
+    const groups = categoryOrder
+      .map((category) => ({
+        category,
+        items: state.sharedList.items.filter(
+          (item) => item.category === category
+        ),
+      }))
+      .filter(
+        (group) => group.items.length > 0
+      );
+
+    const lines = [
+      "🛒 Mummy's List",
+      "",
+    ];
+
+    groups.forEach((group) => {
+      lines.push(group.category);
+
+      group.items.forEach((item) => {
+        const details = [
+          item.specification,
+          `${formatQuantity(item.quantity)} ${item.unit}`,
+        ].filter(Boolean);
+
+        lines.push(
+          `• ${item.name} - ${details.join(" - ")}`
+        );
+      });
+
+      lines.push("");
+    });
+
+    const shareText = lines
+      .join("\n")
+      .trim();
+
+    try {
+      if (
+        navigator.share &&
+        typeof navigator.share === "function"
+      ) {
+        await navigator.share({
+          title: "Mummy's List",
+          text: shareText,
+        });
+
+        return;
+      }
+
+      await navigator.clipboard.writeText(
+        shareText
+      );
+
+      notify("Shopping list copied!");
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return;
+      }
+
+      console.error(
+        "Share final list error:",
+        error
+      );
+
+      notify("Could not share the list");
+    }
   }
 
   async function shareList() {
@@ -1817,7 +1891,10 @@ export default function App() {
           onRemark={(item) =>
             setShowRemarkFor(item)
           }
-          onShare={shareList}
+          onShareLink={shareList}
+          onShareList={
+            shareFinalListAsText
+          }
           onFinish={finishList}
         />
       )}
@@ -1960,6 +2037,90 @@ export default function App() {
         />
       )}
 
+      {finishNotice && (
+        <div
+          className="finish-notice-overlay"
+          onMouseDown={() =>
+            setFinishNotice(null)
+          }
+        >
+          <div
+            className="finish-notice"
+            onMouseDown={(e) =>
+              e.stopPropagation()
+            }
+          >
+            {finishNotice.type === "complete" ? (
+              <>
+                <div className="finish-notice-icon">
+                  🎉
+                </div>
+
+                <h3>
+                  Shopping complete!
+                </h3>
+
+                <p>
+                  Everything on your list is
+                  checked off.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="finish-notice-icon">
+                  🛒
+                </div>
+
+                <h3>
+                  {finishNotice.items.length}{" "}
+                  {finishNotice.items.length === 1
+                    ? "item"
+                    : "items"}{" "}
+                  left
+                </h3>
+
+                <p>
+                  Added back to your cart so
+                  you don't forget them.
+                </p>
+
+                <div className="finish-notice-items">
+                  {finishNotice.items.map(
+                    (item) => (
+                      <div
+                        key={item.id}
+                        className="finish-notice-item"
+                      >
+                        <span>
+                          {item.name}
+                        </span>
+
+                        <strong>
+                          {formatQuantity(
+                            item.quantity
+                          )}{" "}
+                          {item.unit}
+                        </strong>
+                      </div>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+
+            <button
+              className="primary-button full"
+              onClick={() => {
+                setFinishNotice(null);
+                setScreen("history");
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="toast">
           {toast}
@@ -2092,28 +2253,6 @@ function HomeScreen({
         </div>
       </section>
 
-      {sharedList && (
-        <button
-          className="live-list-banner"
-          onClick={onOpenShared}
-        >
-          <div className="live-list-icon">
-            <ClipboardList size={20} />
-          </div>
-
-          <div>
-            <strong>
-              {sharedList.items.length} items
-            </strong>
-
-            <span>
-              Open your current list
-            </span>
-          </div>
-
-          <ChevronRight size={20} />
-        </button>
-      )}
 
       <div className="search-box">
         <Search size={19} />
@@ -2998,6 +3137,22 @@ function CartSheet({
   onRemove,
   onCreateList,
 }) {
+  const categoryOrder = [
+    "Vegetables",
+    "Fruits",
+    "Eats",
+    "Home Essentials",
+  ];
+
+  const groupedCart = categoryOrder
+    .map((category) => ({
+      category,
+      items: cart.filter(
+        (item) => item.category === category
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div
       className="overlay"
@@ -3020,7 +3175,7 @@ function CartSheet({
           </button>
 
           <strong>
-            Your planned items
+            Your shopping list
           </strong>
 
           <span />
@@ -3029,9 +3184,11 @@ function CartSheet({
         {cart.length === 0 ? (
           <div className="empty-state">
             <div>🛒</div>
+
             <h3>
               Your cart is empty
             </h3>
+
             <p>
               Add groceries before creating
               a shopping list.
@@ -3040,102 +3197,96 @@ function CartSheet({
         ) : (
           <>
             <div className="cart-items">
-              {cart.map((item) => (
-                <div
-                  className="cart-item"
-                  key={item.id}
+              {groupedCart.map((group) => (
+                <section
+                  className="cart-category"
+                  key={group.category}
                 >
-                  <div className="cart-item-image text-cart-item">
-                    <div className="cart-item-english">
-                      {item.name}
-                    </div>
-
-                    {item.teluguName && (
-                      <div className="cart-item-telugu">
-                        {item.teluguName}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="cart-item-main">
-                    <strong>
-                      {item.name}
-                    </strong>
-
+                  <div className="cart-category-heading">
                     <span>
-                      {formatQuantity(
-                        item.quantity
-                      )}{" "}
-                      {item.unit}
+                      {categoryMeta[group.category]?.icon}
                     </span>
 
-                    {item.specification && (
-                      <small>
-                        {item.specification}
-                      </small>
-                    )}
+                    <strong>
+                      {group.category}
+                    </strong>
                   </div>
 
-                  <div className="cart-item-actions">
-                    <div className="mini-quantity">
-                      <button
-                        onClick={() =>
-                          onDecrease(
-                            item
-                          )
-                        }
+                  <div className="cart-category-items">
+                    {group.items.map((item) => (
+                      <div
+                        className="cart-item"
+                        key={item.id}
                       >
-                        <Minus
-                          size={14}
-                        />
-                      </button>
+                        <div className="cart-item-main">
+                          <strong>
+                            {item.name}
+                          </strong>
 
-                      <strong>
-                        {formatQuantity(
-                          item.quantity
-                        )}
-                      </strong>
+                          {item.specification && (
+                            <small className="cart-item-specification">
+                              {item.specification}
+                            </small>
+                          )}
 
-                      <button
-                        onClick={() =>
-                          onIncrease(
-                            item
-                          )
-                        }
-                      >
-                        <Plus
-                          size={14}
-                        />
-                      </button>
-                    </div>
+                          <span className="cart-item-total">
+                            {formatQuantity(
+                              item.quantity
+                            )}{" "}
+                            {item.unit}
+                          </span>
+                        </div>
 
-                    <button
-                      className="remove-button"
-                      onClick={() =>
-                        onRemove(
-                          item.id
-                        )
-                      }
-                    >
-                      <Trash2
-                        size={16}
-                      />
-                    </button>
+                        <div className="cart-item-actions">
+                          <div className="mini-quantity">
+                            <button
+                              onClick={() =>
+                                onDecrease(item)
+                              }
+                              aria-label={`Decrease ${item.name}`}
+                            >
+                              <Minus size={18} />
+                            </button>
+
+                            <strong>
+                              {formatQuantity(
+                                item.quantity
+                              )}
+                            </strong>
+
+                            <button
+                              onClick={() =>
+                                onIncrease(item)
+                              }
+                              aria-label={`Increase ${item.name}`}
+                            >
+                              <Plus size={18} />
+                            </button>
+                          </div>
+
+                          <button
+                            className="remove-button"
+                            onClick={() =>
+                              onRemove(item.id)
+                            }
+                            aria-label={`Remove ${item.name}`}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                </section>
               ))}
             </div>
 
             <button
               className="primary-button full"
-              onClick={
-                onCreateList
-              }
+              onClick={onCreateList}
             >
-              <ClipboardList
-                size={18}
-              />
-              Create shared list
+              <ClipboardList size={18} />
+              Final List
             </button>
           </>
         )}
@@ -3265,7 +3416,8 @@ function SharedListScreen({
   onBack,
   onToggleComplete,
   onRemark,
-  onShare,
+  onShareLink,
+  onShareList,
   onFinish,
 }) {
   if (!sharedList) {
@@ -3322,21 +3474,21 @@ function SharedListScreen({
 
         <button
           className="icon-button"
-          onClick={onShare}
-          title="Share"
+          onClick={onShareLink}
+          title="Share Link"
         >
-          <Share2 size={19} />
+          <Link2 size={19} />
         </button>
       </div>
 
       <section className="list-header">
         <span className="eyebrow">
           <ClipboardList size={15} />
-          Live shopping list
+          Final shopping list
         </span>
 
         <h1>
-          Let's get it done. 🛒
+          Ready to shop? 🛒
         </h1>
 
         <div className="progress-summary">
@@ -3402,20 +3554,30 @@ function SharedListScreen({
       )}
 
       <div className="shared-actions">
-        <button
-          className="secondary-button full"
-          onClick={onShare}
-        >
-          <Share2 size={18} />
-          Share shopping list
-        </button>
+        <div className="shared-share-row">
+          <button
+            className="secondary-button"
+            onClick={onShareLink}
+          >
+            <Link2 size={18} />
+            Share Link
+          </button>
+
+          <button
+            className="secondary-button"
+            onClick={onShareList}
+          >
+            <Share2 size={18} />
+            Share List
+          </button>
+        </div>
 
         <button
           className="primary-button full"
           onClick={onFinish}
         >
           <Check size={18} />
-          Finish & save to history
+          Finish Shopping
         </button>
       </div>
     </main>

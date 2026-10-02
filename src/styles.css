@@ -732,10 +732,12 @@ main {
     box-shadow 0.16s ease;
 }
 
-.grocery-card:hover {
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .grocery-card:hover {
+    transform: translateY(-1px);
 
-  box-shadow: var(--shadow);
+    box-shadow: var(--shadow);
+  }
 }
 
 .grocery-card-image {

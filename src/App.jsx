@@ -1,4 +1,6 @@
 
+import { supabase } from "./lib/supabase";
+
 import { useEffect, useMemo, useState } from "react";
 import openversePhotoMap from "../openverse-photo-map.json";
 import {

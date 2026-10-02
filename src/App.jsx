@@ -1570,6 +1570,17 @@ export default function App() {
     // Items that were not completed were not available
     // or were skipped during shopping. Put them back
     // into the planning cart so they are not forgotten.
+    const sharedItemIds = new Set(
+      state.sharedList.items.map(
+        (item) => item.id
+      )
+    );
+
+    const remainingCartItems =
+      state.cart.filter(
+        (item) => !sharedItemIds.has(item.id)
+      );
+
     const unavailableItems =
       state.sharedList.items
         .filter((item) => !item.completed)
@@ -1578,6 +1589,11 @@ export default function App() {
           completed: false,
           updatedAt: Date.now(),
         }));
+
+    const updatedCart = [
+      ...remainingCartItems,
+      ...unavailableItems,
+    ];
 
     setState((prev) => ({
       ...prev,
@@ -1592,7 +1608,7 @@ export default function App() {
       sharedList: null,
 
       // Restore only unfinished/unavailable items.
-      cart: unavailableItems,
+      cart: updatedCart,
     }));
 
     if (unavailableItems.length > 0) {

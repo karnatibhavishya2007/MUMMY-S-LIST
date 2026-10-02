@@ -1096,6 +1096,44 @@ export default function App() {
 
 
   useEffect(() => {
+    async function loadSharedListFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const shareCode = params.get("share");
+
+      if (!shareCode) {
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("shared_lists")
+          .select("data")
+          .eq("share_code", shareCode)
+          .single();
+
+        if (error || !data?.data) {
+          console.error("Shared list error:", error);
+          notify("Shared list not found");
+          return;
+        }
+
+        setState((prev) => ({
+          ...prev,
+          sharedList: data.data,
+        }));
+
+        setScreen("shared");
+        notify("Shared list loaded!");
+      } catch (error) {
+        console.error("Load shared list error:", error);
+        notify("Could not load shared list");
+      }
+    }
+
+    loadSharedListFromUrl();
+  }, []);
+
+  useEffect(() => {
     if (!toast) {
       return undefined;
     }
@@ -1644,62 +1682,49 @@ export default function App() {
       return;
     }
 
-    const pending =
-      state.sharedList.items.filter(
-        (item) => !item.completed
-      );
-
-    const completed =
-      state.sharedList.items.filter(
-        (item) => item.completed
-      );
-
-    const lines = [
-      "🛒 MUMMY'S LIST",
-      "",
-      "Pending:",
-      ...pending.map(
-        (item) =>
-          `• ${item.name} - ${formatQuantity(
-            item.quantity
-          )} ${item.unit}${
-            item.specification
-              ? ` (${item.specification})`
-              : ""
-          }`
-      ),
-      "",
-      "Completed:",
-      ...completed.map(
-        (item) =>
-          `✓ ${item.name} - ${formatQuantity(
-            item.quantity
-          )} ${item.unit}`
-      ),
-    ];
-
-    const text = lines.join("\n");
-
-    if (
-      navigator.share &&
-      typeof navigator.share === "function"
-    ) {
-      try {
-        await navigator.share({
-          title: "Mummy's List",
-          text,
-        });
-        return;
-      } catch {
-        // User cancelled sharing.
-      }
-    }
-
     try {
-      await navigator.clipboard.writeText(text);
-      notify("Shopping list copied!");
-    } catch {
-      notify("Sharing is not available here");
+      notify("Creating share link...");
+
+      const shareCode = Math.random()
+        .toString(36)
+        .slice(2, 9);
+
+      const { error } = await supabase
+        .from("shared_lists")
+        .insert({
+          share_code: shareCode,
+          data: state.sharedList,
+        });
+
+      if (error) {
+        console.error("Share link error:", error);
+        notify("Could not create share link");
+        return;
+      }
+
+      const shareUrl =
+        `${window.location.origin}/?share=${shareCode}`;
+
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        notify("Share link copied!");
+      } catch {
+        if (
+          navigator.share &&
+          typeof navigator.share === "function"
+        ) {
+          await navigator.share({
+            title: "Mummy's List",
+            text: "Open my Mummy's List",
+            url: shareUrl,
+          });
+        } else {
+          notify("Share link created");
+        }
+      }
+    } catch (error) {
+      console.error("Share error:", error);
+      notify("Could not create share link");
     }
   }
 

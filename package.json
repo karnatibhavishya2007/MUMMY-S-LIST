@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@openverse/api-client": "^0.0.1-a1",
+    "@supabase/supabase-js": "^2.117.2",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
